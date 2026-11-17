@@ -1,0 +1,42 @@
+services:
+  # 管理接口：FastAPI，/docs 上传 PEM，查看现役指纹
+  mgmt:
+    build: .
+    image: cert-rotate-demo:latest
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - cert-data:/data/certs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # HTTPS 演示服务：自签演示证书起步，轮询热加载新版本
+  tls:
+    build: .
+    image: cert-rotate-demo:latest
+    command: ["python", "-m", "app.tls_service"]
+    ports:
+      - "8443:8443"
+    volumes:
+      - cert-data:/data/certs
+    environment:
+      CERT_POLL_INTERVAL: "0.5"
+    depends_on:
+      mgmt:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import ssl,urllib.request;ctx=ssl._create_unverified_context();urllib.request.urlopen('https://localhost:8443/health',context=ctx)"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  cert-data:
